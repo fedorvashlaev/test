@@ -4,6 +4,7 @@ import datetime
 import platform
 import sys
 import subprocess
+import os
 from typing import Dict, List
 
 # Проверка платформы для GPIO
@@ -24,6 +25,7 @@ if IS_RASPBERRY_PI:
 # Глобальные переменные
 plans: Dict[datetime.date, List[Dict]] = {}
 current_lang = "en"
+EXCEL_FILENAME = "weekly_plans.xlsx"
 
 PLAN_COLORS = {
     "🔴 Red": "#ffcdd2",
@@ -96,6 +98,49 @@ def validate_time(time_str: str) -> bool:
     except ValueError:
         return False
 
+def load_from_excel():
+    try:
+        if os.path.exists(EXCEL_FILENAME):
+            df = pd.read_excel(EXCEL_FILENAME)
+            plans.clear()
+            
+            for _, row in df.iterrows():
+                date = datetime.datetime.strptime(row['Date'], "%Y-%m-%d").date()
+                if date not in plans:
+                    plans[date] = []
+                
+                plans[date].append({
+                    'category': row['Category'],
+                    'plan': row['Plan'],
+                    'start_time': row['Start Time'],
+                    'end_time': row['End Time'],
+                    'color': row['Color'],
+                    'color_code': PLAN_COLORS[row['Color']]
+                })
+                
+                plans[date].sort(key=lambda x: datetime.datetime.strptime(x['start_time'], "%H:%M").time())
+    except Exception as e:
+        print(f"Error loading data: {e}")
+
+def auto_save():
+    try:
+        data = []
+        for date, entries in plans.items():
+            for entry in entries:
+                data.append({
+                    'Date': date.strftime("%Y-%m-%d"),
+                    'Category': entry['category'],
+                    'Plan': entry['plan'],
+                    'Start Time': entry['start_time'],
+                    'End Time': entry['end_time'],
+                    'Color': entry['color']
+                })
+        
+        df = pd.DataFrame(data)
+        df.to_excel(EXCEL_FILENAME, index=False)
+    except Exception as e:
+        print(f"Error auto-saving: {e}")
+
 def add_plan(date: datetime.date, category: str, plan: str, 
             start_time: str, end_time: str, color: str) -> None:
     if date not in plans:
@@ -124,48 +169,19 @@ def add_plan(date: datetime.date, category: str, plan: str,
     })
     plans[date].sort(key=lambda x: datetime.datetime.strptime(x['start_time'], "%H:%M").time())
 
-def save_to_excel(page: ft.Page) -> None:
-    try:
-        data = []
-        for date, entries in plans.items():
-            for entry in entries:
-                data.append({
-                    'Date': date.strftime("%Y-%m-%d"),
-                    'Category': entry['category'],
-                    'Plan': entry['plan'],
-                    'Start Time': entry['start_time'],
-                    'End Time': entry['end_time'],
-                    'Color': entry['color']
-                })
-        
-        df = pd.DataFrame(data)
-        filename = "weekly_plans.xlsx"
-        df.to_excel(filename, index=False)
-        
-        page.snack_bar = ft.SnackBar(
-            ft.Text(get_text("saved")),
-            bgcolor="green"
-        )
-        page.snack_bar.open = True
-        page.update()
-    except Exception as e:
-        page.snack_bar = ft.SnackBar(
-            ft.Text(str(e)),
-            bgcolor="red"
-        )
-        page.snack_bar.open = True
-        page.update()
-
 def main(page: ft.Page) -> None:
     global current_lang
     selected_date = datetime.datetime.now().date()
+    
+    # Загрузка данных при старте
+    load_from_excel()
 
-    # Функции должны быть объявлены перед использованием
     def change_language(e: ft.ControlEvent) -> None:
         global current_lang
         current_lang = "ru" if current_lang == "en" else "en"
         update_texts()
         update_ui()
+        auto_save()
 
     def update_texts() -> None:
         page.title = get_text("title")
@@ -211,12 +227,14 @@ def main(page: ft.Page) -> None:
         page.snack_bar = ft.SnackBar(ft.Text(get_text("cleared_day")), bgcolor="green")
         page.snack_bar.open = True
         update_ui()
+        auto_save()
 
     def clear_all_plans(e: ft.ControlEvent) -> None:
         plans.clear()
         page.snack_bar = ft.SnackBar(ft.Text(get_text("cleared_all")), bgcolor="green")
         page.snack_bar.open = True
         update_ui()
+        auto_save()
 
     def on_add_plan(e: ft.ControlEvent) -> None:
         nonlocal selected_date
@@ -242,6 +260,7 @@ def main(page: ft.Page) -> None:
             color_dropdown.value = "🔵 Blue"
 
             update_ui()
+            auto_save()
         except Exception as ex:
             page.snack_bar = ft.SnackBar(ft.Text(str(ex)), bgcolor="red")
             page.snack_bar.open = True
@@ -278,7 +297,7 @@ def main(page: ft.Page) -> None:
     control_buttons = ft.Row([
         ft.ElevatedButton(
             get_text("save"),
-            on_click=lambda _: save_to_excel(page),
+            on_click=lambda _: auto_save(),
             bgcolor="#4CAF50",
             color="white"
         ),
