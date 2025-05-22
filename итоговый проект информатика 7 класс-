@@ -1,148 +1,97 @@
 import flet as ft
 import pandas as pd
 from datetime import datetime, timedelta
-from transformers import pipeline
-import json
 
-# Инициализация нейросети для генерации поздравлений
-greeting_model = pipeline("text-generation", model="gpt2")
+# Создаем глобальную переменную для хранения планов
+plans = {}
 
-# Список основных праздников в России
+# Основные праздники РФ
 holidays = {
-    "2023-01-01": "Новый год",
-    "2023-01-07": "Рождество Христово",
-    "2023-02-23": "День защитника Отечества",
-    "2023-03-08": "Международный женский день",
-    "2023-05-01": "Праздник весны и труда",
-    "2023-05-09": "День Победы",
-    # Добавьте другие праздники по мере необходимости
+    "01-01": "Новый год",
+    "07-01": "Рождество Христово",
+    "23-02": "День защитника Отечества",
+    "08-03": "Международный женский день",
+    "01-05": "Праздник Весны и Труда",
+    "09-05": "День Победы",
+    "12-06": "День России",
+    "04-11": "День народного единства"
 }
 
-# Инициализация DataFrame для хранения планов
-plans_df = pd.DataFrame(columns=["Дата", "План", "Категория"])
+# Функция для добавления плана
+def add_plan(date, category, plan):
+    if date not in plans:
+        plans[date] = []
+    plans[date].append({'category': category, 'plan': plan})
 
-def add_plan(date, plan, category):
-    """Добавляет новый план в DataFrame."""
-    global plans_df
-    new_entry = pd.DataFrame([[date, plan, category]], columns=["Дата", "План", "Категория"])
-    plans_df = pd.concat([plans_df, new_entry], ignore_index=True)
-
-def edit_plan(index, date, plan, category):
-    """Редактирует существующий план в DataFrame."""
-    global plans_df
-    plans_df.at[index, 'Дата'] = date
-    plans_df.at[index, 'План'] = plan
-    plans_df.at[index, 'Категория'] = category
-
-def delete_plan(index):
-    """Удаляет план из DataFrame."""
-    global plans_df
-    plans_df = plans_df.drop(index).reset_index(drop=True)
-
-def count_days_until(target_date):
-    """Считывает количество дней до заданной даты."""
+# Функция для получения оставшихся дней до заданной даты
+def days_until(target_date):
     today = datetime.now().date()
-    delta = (target_date - today).days
-    return delta if delta >= 0 else 0
+    delta = target_date - today
+    return delta.days
 
-def get_holiday(date):
-    """Возвращает название праздника, если дата является праздником."""
-    return holidays.get(date.strftime('%Y-%m-%d'), None)
+# Функция для отображения планов в таблице
+def display_plans():
+    data = []
+    for date, entries in plans.items():
+        for entry in entries:
+            data.append({'Date': date, 'Category': entry['category'], 'Plan': entry['plan']})
+    df = pd.DataFrame(data)
+    return df
 
-def generate_greeting(holiday_name):
-    """Генерирует поздравление на основе названия праздника."""
-    prompt = f"С днём {holiday_name}! Желаю вам всего наилучшего!"
-    greeting = greeting_model(prompt, max_length=50, num_return_sequences=1)[0]['generated_text']
-    return greeting
+# Функция для сохранения планов в Excel
+def save_to_excel():
+    df = display_plans()
+    df.to_excel('plans.xlsx', index=False)
 
-def save_plans_to_file(filename):
-    """Сохраняет планы в файл JSON."""
-    plans_df.to_json(filename, orient='records', lines=True)
-
-def load_plans_from_file(filename):
-    """Загружает планы из файла JSON."""
-    global plans_df
-    plans_df = pd.read_json(filename, orient='records', lines=True)
-
-def main(page):
-    """Основная функция приложения."""
-    page.title = "Календарь"
+# Основная функция приложения
+def main(page: ft.Page):
+    page.title = "Календарь планов"
     
     # Элементы интерфейса
     date_picker = ft.DatePicker(label="Выберите дату")
-    plan_input = ft.TextField(label="Ваш план", multiline=True)
+    category_input = ft.TextField(label="Категория плана")
+    plan_input = ft.TextField(label="Ваш план")
     
-    category_input = ft.Dropdown(
-        label="Категория",
-        options=[
-            ft.dropdown.Option("Работа"),
-            ft.dropdown.Option("Личные дела"),
-            ft.dropdown.Option("Учеба"),
-            ft.dropdown.Option("Отдых"),
-        ],
-    )
-    
-    add_button = ft.ElevatedButton("Добавить план", on_click=lambda e: add_plan(date_picker.value, plan_input.value, category_input.value))
-    
-    edit_button = ft.ElevatedButton("Редактировать план", on_click=lambda e: edit_selected_plan())
-    
-    delete_button = ft.ElevatedButton("Удалить план", on_click=lambda e: delete_selected_plan())
-    
-    save_button = ft.ElevatedButton("Сохранить планы", on_click=lambda e: save_plans_to_file("plans.json"))
-    
-    load_button = ft.ElevatedButton("Загрузить планы", on_click=lambda e: load_plans_from_file("plans.json"))
-    
-    plans_table = ft.DataTable(
-        columns=[
-            ft.DataColumn(ft.Text("Дата")),
-            ft.DataColumn(ft.Text("План")),
-            ft.DataColumn(ft.Text("Категория")),
-        ],
-        rows=[]
-    )
+    def on_add_plan(e):
+        selected_date = date_picker.value
+        category = category_input.value
+        plan = plan_input.value
+        
+        # Добавляем план
+        add_plan(selected_date, category, plan)
+        
+        # Очищаем поля ввода
+        category_input.value = ""
+        plan_input.value = ""
+        
+        # Обновляем таблицу
+        update_table()
 
-    def update_plans_table():
-        """Обновляет таблицу с планами."""
-        rows = []
-        for index, row in plans_df.iterrows():
-            color = "green" if row["Категория"] == "Работа" else "blue" if row["Категория"] == "Личные дела" else "orange" if row["Категория"] == "Учеба" else "red"
-            holiday_name = get_holiday(row["Дата"])
-            if holiday_name:
-                color = "gold"  # Золотой цвет для праздников
-                greeting = generate_greeting(holiday_name)
-                rows.append(ft.DataRow(cells=[
-                    ft.DataCell(ft.Text(row["Дата"].strftime('%Y-%m-%d'))),
-                    ft.DataCell(ft.Text(f"{row['План']} - {greeting}")),
-                    ft.DataCell(ft.Text(row["Категория"])),
-                ], bgcolor=color))
-            else:
-                rows.append(ft.DataRow(cells=[
-                    ft.DataCell(ft.Text(row["Дата"].strftime('%Y-%m-%d'))),
-                    ft.DataCell(ft.Text(row["План"])),
-                    ft.DataCell(ft.Text(row["Категория"])),
-                ], bgcolor=color))
-        plans_table.rows = rows
+    def update_table():
+        df = display_plans()
+        table.data = df.to_dict(orient='records')
         page.update()
 
-    def edit_selected_plan():
-        """Редактирует выбранный план."""
-        selected_index = plans_table.selected_row_index
-        if selected_index is not None:
-            edit_plan(selected_index, date_picker.value, plan_input.value, category_input.value)
-            update_plans_table()
+    # Кнопка для добавления плана
+    add_button = ft.ElevatedButton("Добавить план", on_click=on_add_plan)
 
-    def delete_selected_plan():
-        """Удаляет выбранный план."""
-        selected_index = plans_table.selected_row_index
-        if selected_index is not None:
-            delete_plan(selected_index)
-            update_plans_table()
+    # Таблица для отображения планов
+    table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text("Date")),
+            ft.DataColumn(ft.Text("Category")),
+            ft.DataColumn(ft.Text("Plan")),
+        ],
+        rows=[],
+        width=500,
+        height=300,
+    )
 
-    # Обновляем таблицу при запуске приложения
-    update_plans_table()
+    # Кнопка для сохранения в Excel
+    save_button = ft.ElevatedButton("Сохранить в Excel", on_click=lambda e: save_to_excel())
 
     # Добавляем элементы на страницу
-    page.add(date_picker, plan_input, category_input, add_button, edit_button, delete_button, save_button, load_button, plans_table)
+    page.add(date_picker, category_input, plan_input, add_button, table, save_button)
 
 # Запуск приложения
 ft.app(target=main)
