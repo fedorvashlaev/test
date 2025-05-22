@@ -1,76 +1,116 @@
 import flet as ft
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
+from typing import Dict, List, Optional
 
-# Основные праздники России
-holidays = {
-    "01-01": "Новый год",
-    "07-01": "Рождество Христово",
-    "23-02": "День защитника Отечества",
-    "08-03": "Международный женский день",
-    "01-05": "Праздник весны и труда",
-    "09-05": "День Победы",
-    "12-06": "День России",
-    "04-11": "День народного единства"
+# Основные праздники РФ (дата, название)
+RUSSIAN_HOLIDAYS = {
+    (1, 1): "Новый год",
+    (1, 2): "Новый год",
+    (1, 3): "Новый год",
+    (1, 4): "Новый год",
+    (1, 5): "Новый год",
+    (1, 6): "Новый год",
+    (1, 7): "Рождество Христово",
+    (1, 8): "Новый год (выходной)",
+    (2, 23): "День защитника Отечества",
+    (3, 8): "Международный женский день",
+    (5, 1): "Праздник весны и труда",
+    (5, 9): "День Победы",
+    (6, 12): "День России",
+    (11, 4): "День народного единства"
 }
 
-# Функция для проверки, является ли дата праздником
-def is_holiday(date):
-    return date.strftime("%d-%m") in holidays
-
-# Создание DataFrame для хранения планов
-plans_df = pd.DataFrame(columns=["Дата", "План"])
-
-# Функция для добавления плана
-def add_plan(date_str, plan):
-    global plans_df
-    new_row = {"Дата": date_str, "План": plan}
-    plans_df = plans_df.append(new_row, ignore_index=True)
-
-# Функция для отображения планов в таблице
-def display_plans():
-    return plans_df
-
-# Функция для подсчета дней до заданной даты
-def days_until(target_date):
-    today = datetime.now()
-    target_date = datetime.strptime(target_date, "%Y-%m-%d")
-    delta = (target_date - today).days
-    return delta
-
-# Основная функция приложения
-def main(page: ft.Page):
-    page.title = "Календарь"
-    
-    # Поля для ввода данных
-    date_input = ft.DatePicker(label="Выберите дату", value=datetime.now())
-    plan_input = ft.TextField(label="Введите ваши планы", multiline=True)
-    target_date_input = ft.TextField(label="Введите целевую дату (YYYY-MM-DD)")
-    
-    # Кнопка для добавления плана
-    add_button = ft.ElevatedButton("Добавить план", on_click=lambda e: add_plan(date_input.value.strftime("%Y-%m-%d"), plan_input.value))
-    
-    # Кнопка для отображения планов
-    display_button = ft.ElevatedButton("Показать планы", on_click=lambda e: page.add(ft.DataTable(
-        columns=[ft.DataColumn(ft.Text("Дата")), ft.DataColumn(ft.Text("План"))],
-        rows=[ft.DataRow(cells=[ft.DataCell(ft.Text(row["Дата"])), ft.DataCell(ft.Text(row["План"]))]) for _, row in plans_df.iterrows()])
-    )))
-    
-    # Кнопка для подсчета дней до целевой даты
-    countdown_button = ft.ElevatedButton("Сколько дней до?", on_click=lambda e: page.add(ft.Text(f"Дней до {target_date_input.value}: {days_until(target_date_input.value)}")))
-    
-    # Размещение элементов на странице
-    page.add(
-        date_input,
-        plan_input,
-        add_button,
-        display_button,
-        target_date_input,
-        countdown_button,
-        ft.Text("Основные праздники:"),
-        ft.Column([ft.Text(f"{date} - {name}") for date, name in holidays.items()])
-    )
-
-# Запуск приложения
-ft.app(target=main)
-  
+class CalendarApp:
+    def __init__(self, page: ft.Page):
+        self.page = page
+        self.page.title = "Календарь с планировщиком"
+        self.page.theme_mode = ft.ThemeMode.LIGHT
+        self.page.window_width = 1000
+        self.page.window_height = 700
+        self.page.window_resizable = False
+        self.page.padding = 20
+        
+        # Текущая выбранная дата
+        self.selected_date: Optional[date] = None
+        
+        # Хранилище планов (дата -> список планов)
+        self.plans: Dict[date, List[str]] = {}
+        
+        # Инициализация UI
+        self.init_ui()
+        
+    def init_ui(self):
+        """Инициализация пользовательского интерфейса"""
+        # Основной контейнер
+        self.main_container = ft.Column(expand=True, spacing=20)
+        
+        # Заголовок
+        self.title = ft.Text("Календарь с планировщиком", size=24, weight=ft.FontWeight.BOLD)
+        
+        # Строка с навигацией и счетчиком дней
+        self.nav_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        
+        # Кнопки навигации
+        self.prev_month_btn = ft.IconButton(icon=ft.icons.ARROW_BACK, on_click=self.prev_month)
+        self.next_month_btn = ft.IconButton(icon=ft.icons.ARROW_FORWARD, on_click=self.next_month)
+        self.current_month_label = ft.Text(size=18, weight=ft.FontWeight.BOLD)
+        
+        # Счетчик дней до выбранной даты
+        self.days_counter = ft.Text("Выберите дату для отсчета", size=16, color=ft.colors.BLUE)
+        
+        # Добавление элементов в строку навигации
+        self.nav_row.controls.extend([
+            self.prev_month_btn,
+            self.current_month_label,
+            self.next_month_btn,
+            self.days_counter
+        ])
+        
+        # Календарная сетка
+        self.calendar_grid = ft.GridView(
+            runs_count=7,
+            max_extent=100,
+            spacing=5,
+            run_spacing=5,
+            child_aspect_ratio=1,
+        )
+        
+        # Панель добавления планов
+        self.add_plan_panel = ft.Column(
+            visible=False,
+            spacing=10
+        )
+        
+        self.plan_input = ft.TextField(
+            label="Добавить план",
+            multiline=True,
+            min_lines=2,
+            max_lines=4,
+            expand=True
+        )
+        
+        self.add_plan_btn = ft.ElevatedButton(
+            text="Добавить",
+            icon=ft.icons.ADD,
+            on_click=self.add_plan
+        )
+        
+        self.add_plan_panel.controls.extend([
+            ft.Text("Добавление плана", size=18, weight=ft.FontWeight.BOLD),
+            self.plan_input,
+            ft.Row([self.add_plan_btn], alignment=ft.MainAxisAlignment.END)
+        ])
+        
+        # Таблица с планами
+        self.plans_table = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text("Дата")),
+                ft.DataColumn(ft.Text("План")),
+                ft.DataColumn(ft.Text("Действия")),
+            ],
+            rows=[],
+        )
+        
+        self.plans_table_container = ft.Column(
+            [
