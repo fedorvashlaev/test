@@ -15,20 +15,62 @@ PLAN_COLORS = {
     "🔵 Blue": "#bbdefb"
 }
 
+# Локализация интерфейса
+LANGUAGES = {
+    "en": {
+        "title": "Weekly Calendar Planner",
+        "selected_date": "Selected date:",
+        "category": "Category",
+        "plan": "Plan",
+        "start_time": "Start Time (HH:MM)",
+        "end_time": "End Time (HH:MM)",
+        "color": "Color",
+        "add_plan": "Add Plan",
+        "auto_distribute": "Auto-distribute tasks:",
+        "tasks_hint": "Tasks (one per line)",
+        "distribute": "Distribute Tasks",
+        "plans_for_day": "Plans for selected day:",
+        "time": "Time",
+        "activity": "Activity",
+        "save": "💾 Save to Excel",
+        "days": ["MON", "TUE", "WED", "THU", "FRI"]
+    },
+    "ru": {
+        "title": "Еженедельный планировщик",
+        "selected_date": "Выбранная дата:",
+        "category": "Категория",
+        "plan": "План",
+        "start_time": "Время начала (ЧЧ:ММ)",
+        "end_time": "Время окончания (ЧЧ:ММ)",
+        "color": "Цвет",
+        "add_plan": "Добавить план",
+        "auto_distribute": "Автораспределение задач:",
+        "tasks_hint": "Задачи (по одной на строку)",
+        "distribute": "Распределить задачи",
+        "plans_for_day": "Планы на выбранный день:",
+        "time": "Время",
+        "activity": "Занятие",
+        "save": "💾 Сохранить в Excel",
+        "days": ["ПН", "ВТ", "СР", "ЧТ", "ПТ"]
+    }
+}
 
-# Функция для добавления плана с проверкой пересечений
+# Текущий язык (по умолчанию английский)
+current_lang = "en"
+
+def get_text(key):
+    return LANGUAGES[current_lang].get(key, key)
+
 def add_plan(date, category, plan, start_time, end_time, color):
     if date not in plans:
         plans[date] = []
 
-    # Преобразуем время в объекты datetime.time для сравнения
     try:
         start = datetime.datetime.strptime(start_time, "%H:%M").time()
         end = datetime.datetime.strptime(end_time, "%H:%M").time()
     except ValueError:
         raise ValueError("Invalid time format. Use HH:MM")
 
-    # Проверяем пересечения с существующими планами
     for existing_plan in plans[date]:
         existing_start = datetime.datetime.strptime(existing_plan['start_time'], "%H:%M").time()
         existing_end = datetime.datetime.strptime(existing_plan['end_time'], "%H:%M").time()
@@ -37,7 +79,6 @@ def add_plan(date, category, plan, start_time, end_time, color):
             raise ValueError(
                 f"Time conflict with existing plan: {existing_plan['plan']} ({existing_plan['start_time']}-{existing_plan['end_time']})")
 
-    # Добавляем новый план
     plans[date].append({
         'category': category,
         'plan': plan,
@@ -47,16 +88,12 @@ def add_plan(date, category, plan, start_time, end_time, color):
         'color_code': PLAN_COLORS[color]
     })
 
-    # Сортируем планы по времени начала
     plans[date].sort(key=lambda x: datetime.datetime.strptime(x['start_time'], "%H:%M").time())
 
-
-# Функция для автоматического распределения времени
 def distribute_plans(date, tasks, start_work="09:00", end_work="18:00", lunch_start="13:00", lunch_end="14:00"):
     if not tasks:
         return
 
-    # Преобразуем временные строки в объекты time
     def str_to_time(s):
         return datetime.datetime.strptime(s, "%H:%M").time()
 
@@ -65,27 +102,22 @@ def distribute_plans(date, tasks, start_work="09:00", end_work="18:00", lunch_st
     lunch_start_time = str_to_time(lunch_start)
     lunch_end_time = str_to_time(lunch_end)
 
-    # Удаляем существующие планы на эту дату
     if date in plans:
         del plans[date]
 
     current_time = work_start
     task_duration = (datetime.datetime.combine(datetime.date.today(), work_end) -
-                     datetime.datetime.combine(datetime.date.today(), work_start)) // len(tasks)
+                    datetime.datetime.combine(datetime.date.today(), work_start)) // len(tasks)
 
     for i, task in enumerate(tasks):
-        # Пропускаем обеденное время
         if current_time >= lunch_start_time and current_time < lunch_end_time:
             current_time = lunch_end_time
 
-        # Рассчитываем время окончания задачи
         end_time = (datetime.datetime.combine(datetime.date.today(), current_time) + task_duration).time()
 
-        # Если вышли за рабочие часы, обрезаем
         if end_time > work_end:
             end_time = work_end
 
-        # Добавляем план
         add_plan(
             date=date,
             category=task.get('category', 'Task'),
@@ -95,11 +127,8 @@ def distribute_plans(date, tasks, start_work="09:00", end_work="18:00", lunch_st
             color=task.get('color', '🔵 Blue')
         )
 
-        # Переходим к следующему временному интервалу
         current_time = end_time
 
-
-# Функция для отображения планов
 def display_plans(selected_date):
     data = []
     if selected_date in plans:
@@ -113,8 +142,6 @@ def display_plans(selected_date):
             })
     return data
 
-
-# Функция для сохранения в Excel
 def save_to_excel():
     all_data = []
     for date in plans:
@@ -130,62 +157,68 @@ def save_to_excel():
     df = pd.DataFrame(all_data)
     df.to_excel('plans.xlsx', index=False)
 
-
-# Основная функция приложения
 def main(page: ft.Page):
-    page.title = "Weekly Calendar Planner"
+    global current_lang
+
+    page.title = get_text("title")
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.padding = 20
     page.theme_mode = "light"
 
-    # Цвета интерфейса
     WHITE = "white"
     BLUE_100 = "#bbdefb"
     GREY_300 = "#e0e0e0"
 
-    # Текущая выбранная дата
     selected_date = datetime.datetime.now().date()
 
-    # Элементы для добавления плана
-    category_input = ft.TextField(label="Category", width=300, height=40)
-    plan_input = ft.TextField(label="Plan", width=300, height=40, multiline=True, min_lines=2)
-    start_time_input = ft.TextField(label="Start Time (HH:MM)", width=140)
-    end_time_input = ft.TextField(label="End Time (HH:MM)", width=140)
+    # Элементы интерфейса
+    category_input = ft.TextField(label=get_text("category"), width=300, height=40)
+    plan_input = ft.TextField(label=get_text("plan"), width=300, height=40, multiline=True, min_lines=2)
+    start_time_input = ft.TextField(label=get_text("start_time"), width=140)
+    end_time_input = ft.TextField(label=get_text("end_time"), width=140)
     time_row = ft.Row([start_time_input, end_time_input])
 
-    # Выбор цвета
     color_dropdown = ft.Dropdown(
-        label="Color",
+        label=get_text("color"),
         width=300,
         options=[ft.dropdown.Option(color) for color in PLAN_COLORS.keys()],
         value="🔵 Blue"
     )
 
-    add_button = ft.ElevatedButton("Add Plan")
+    add_button = ft.ElevatedButton(get_text("add_plan"))
 
-    # Элементы для автоматического распределения
     distribute_tasks_input = ft.TextField(
-        label="Tasks (one per line)",
+        label=get_text("tasks_hint"),
         width=300,
         height=100,
         multiline=True
     )
-    distribute_button = ft.ElevatedButton("Distribute Tasks")
+    distribute_button = ft.ElevatedButton(get_text("distribute"))
 
-    # Таблица для отображения планов
     table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("Time")),
-            ft.DataColumn(ft.Text("Activity")),
+            ft.DataColumn(ft.Text(get_text("time"))),
+            ft.DataColumn(ft.Text(get_text("activity"))),
         ],
         rows=[],
         width=500,
     )
 
-    # Текст с выбранной датой
-    selected_date_text = ft.Text(f"Selected date: {selected_date.strftime('%A, %B %d')}", size=18, weight="bold")
+    selected_date_text = ft.Text(f"{get_text('selected_date')} {selected_date.strftime('%A, %B %d')}",
+                                size=18, weight="bold")
 
-    # Функция для создания карточки дня
+    def change_language(e):
+        global current_lang
+        current_lang = "ru" if current_lang == "en" else "en"
+        update_ui()
+
+    # Заменяем ft.icons.LANGUAGE на текстовое представление
+    language_button = ft.IconButton(
+        icon="language",  # Используем текстовый идентификатор вместо icons.LANGUAGE
+        on_click=change_language,
+        tooltip="Switch language"
+    )
+
     def create_day_card(day_name, day_number, current_date):
         is_selected = (current_date == selected_date)
         return ft.Container(
@@ -206,13 +239,11 @@ def main(page: ft.Page):
             data=current_date
         )
 
-    # Функция выбора даты
     def select_date(e):
         nonlocal selected_date
         selected_date = e.control.data
         update_ui()
 
-    # Функция добавления плана
     def on_add_plan(e):
         category = category_input.value
         plan = plan_input.value
@@ -233,7 +264,6 @@ def main(page: ft.Page):
                 page.snack_bar.open = True
                 page.update()
 
-    # Функция распределения задач
     def on_distribute_tasks(e):
         tasks_text = distribute_tasks_input.value
         if not tasks_text:
@@ -256,27 +286,39 @@ def main(page: ft.Page):
             page.snack_bar.open = True
             page.update()
 
-    # Функция обновления интерфейса
     def update_ui():
-        # Обновляем выделение дат
-        for day_card in week_days.controls:
-            day_card.bgcolor = WHITE
-            if day_card.data == selected_date:
+        page.title = get_text("title")
+        category_input.label = get_text("category")
+        plan_input.label = get_text("plan")
+        start_time_input.label = get_text("start_time")
+        end_time_input.label = get_text("end_time")
+        color_dropdown.label = get_text("color")
+        add_button.text = get_text("add_plan")
+        distribute_tasks_input.label = get_text("tasks_hint")
+        distribute_button.text = get_text("distribute")
+        selected_date_text.value = f"{get_text('selected_date')} {selected_date.strftime('%A, %B %d')}"
+        table.columns[0].label = ft.Text(get_text("time"))
+        table.columns[1].label = ft.Text(get_text("activity"))
+        save_button.text = get_text("save")
+
+        week_days.controls.clear()
+        for i in range(5):
+            current_date = selected_date + datetime.timedelta(days=i - (selected_date.weekday() - 0) % 7)
+            day_name = get_text("days")[i]
+            day_number = str(current_date.day)
+            day_card = create_day_card(day_name, day_number, current_date)
+            day_card.on_click = select_date
+            if current_date == selected_date:
                 day_card.bgcolor = BLUE_100
+            week_days.controls.append(day_card)
 
-        # Обновляем текст выбранной даты
-        selected_date_text.value = f"Selected date: {selected_date.strftime('%A, %B %d')}"
-
-        # Обновляем таблицу с планами
         table.rows.clear()
         if selected_date in plans:
             for entry in plans[selected_date]:
                 table.rows.append(
                     ft.DataRow(
                         cells=[
-                            ft.DataCell(
-                                ft.Text(f"{entry['start_time']} - {entry['end_time']}")
-                            ),
+                            ft.DataCell(ft.Text(f"{entry['start_time']} - {entry['end_time']}")),
                             ft.DataCell(
                                 ft.Row([
                                     ft.Text(entry['color'].split()[0], size=20),
@@ -295,33 +337,27 @@ def main(page: ft.Page):
                 )
         page.update()
 
-    # Создаем карточки дней недели
-    today = datetime.datetime.now().date()
     week_days = ft.Row(alignment="spaceEvenly")
-
-    for i in range(5):  # Только рабочие дни (пн-пт)
-        current_date = today + datetime.timedelta(days=i)
-        day_name = ["MON", "TUE", "WED", "THU", "FRI"][i]
+    for i in range(5):
+        current_date = selected_date + datetime.timedelta(days=i - (selected_date.weekday() - 0) % 7)
+        day_name = get_text("days")[i]
         day_number = str(current_date.day)
-
         day_card = create_day_card(day_name, day_number, current_date)
         day_card.on_click = select_date
-
         if current_date == selected_date:
             day_card.bgcolor = BLUE_100
-
         week_days.controls.append(day_card)
 
-    # Кнопка сохранения
-    save_button = ft.ElevatedButton("💾 Save to Excel", on_click=lambda e: save_to_excel())
+    save_button = ft.ElevatedButton(get_text("save"), on_click=lambda e: save_to_excel())
 
-    # Назначаем обработчики
     add_button.on_click = on_add_plan
     distribute_button.on_click = on_distribute_tasks
 
-    # Основной layout
     page.add(
-        ft.Text("Weekly Planner", size=24, weight="bold"),
+        ft.Row([
+            ft.Text(get_text("title"), size=24, weight="bold"),
+            language_button
+        ], alignment="spaceBetween"),
         week_days,
         ft.Divider(height=20),
         selected_date_text,
@@ -337,7 +373,7 @@ def main(page: ft.Page):
                         color_dropdown,
                         add_button,
                         ft.Divider(height=20),
-                        ft.Text("Auto-distribute tasks:", weight="bold"),
+                        ft.Text(get_text("auto_distribute"), weight="bold"),
                         distribute_tasks_input,
                         distribute_button,
                         save_button,
@@ -348,7 +384,7 @@ def main(page: ft.Page):
                 ft.Column(
                     width=500,
                     controls=[
-                        ft.Text("Plans for selected day:", size=16),
+                        ft.Text(get_text("plans_for_day"), size=16),
                         ft.Container(
                             table,
                             border=ft.border.all(1, GREY_300),
@@ -361,7 +397,4 @@ def main(page: ft.Page):
         )
     )
 
-
-# Запуск приложения
 ft.app(target=main)
-
