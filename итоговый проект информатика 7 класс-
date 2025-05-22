@@ -1,97 +1,275 @@
-import flet as ft
 import pandas as pd
-from datetime import datetime, timedelta
+import flet as ft
+import datetime
+from datetime import date, time
 
-# Создаем глобальную переменную для хранения планов
+# Глобальная переменная для хранения планов
 plans = {}
 
-# Основные праздники РФ
-holidays = {
-    "01-01": "Новый год",
-    "07-01": "Рождество Христово",
-    "23-02": "День защитника Отечества",
-    "08-03": "Международный женский день",
-    "01-05": "Праздник Весны и Труда",
-    "09-05": "День Победы",
-    "12-06": "День России",
-    "04-11": "День народного единства"
+# Цвета для планов с метками
+PLAN_COLORS = {
+    "🔴 Red": "#ffcdd2",
+    "💖 Pink": "#f8bbd0",
+    "🟢 Green": "#c8e6c9",
+    "🟡 Yellow": "#fff9c4",
+    "🔵 Blue": "#bbdefb"
 }
 
+
 # Функция для добавления плана
-def add_plan(date, category, plan):
+def add_plan(date, category, plan, start_time, end_time, color):
     if date not in plans:
         plans[date] = []
-    plans[date].append({'category': category, 'plan': plan})
+    plans[date].append({
+        'category': category,
+        'plan': plan,
+        'start_time': start_time,
+        'end_time': end_time,
+        'color': color,
+        'color_code': PLAN_COLORS[color]  # Сохраняем код цвета
+    })
+    # Сортируем планы по времени начала
+    plans[date].sort(key=lambda x: x['start_time'])
 
-# Функция для получения оставшихся дней до заданной даты
-def days_until(target_date):
-    today = datetime.now().date()
-    delta = target_date - today
-    return delta.days
 
-# Функция для отображения планов в таблице
-def display_plans():
+# Функция для отображения планов
+def display_plans(selected_date):
     data = []
-    for date, entries in plans.items():
-        for entry in entries:
-            data.append({'Date': date, 'Category': entry['category'], 'Plan': entry['plan']})
-    df = pd.DataFrame(data)
-    return df
+    if selected_date in plans:
+        for entry in plans[selected_date]:
+            data.append({
+                'Date': selected_date,
+                'Category': entry['category'],
+                'Plan': entry['plan'],
+                'Time': f"{entry['start_time']} - {entry['end_time']}",
+                'Color': entry['color']
+            })
+    return data
 
-# Функция для сохранения планов в Excel
+
+# Функция для сохранения в Excel
 def save_to_excel():
-    df = display_plans()
+    all_data = []
+    for date in plans:
+        for entry in plans[date]:
+            all_data.append({
+                'Date': date,
+                'Category': entry['category'],
+                'Plan': entry['plan'],
+                'Start Time': entry['start_time'],
+                'End Time': entry['end_time'],
+                'Color': entry['color']
+            })
+    df = pd.DataFrame(all_data)
     df.to_excel('plans.xlsx', index=False)
+
 
 # Основная функция приложения
 def main(page: ft.Page):
-    page.title = "Календарь планов"
-    
-    # Элементы интерфейса
-    date_picker = ft.DatePicker(label="Выберите дату")
-    category_input = ft.TextField(label="Категория плана")
-    plan_input = ft.TextField(label="Ваш план")
-    
-    def on_add_plan(e):
-        selected_date = date_picker.value
-        category = category_input.value
-        plan = plan_input.value
-        
-        # Добавляем план
-        add_plan(selected_date, category, plan)
-        
-        # Очищаем поля ввода
-        category_input.value = ""
-        plan_input.value = ""
-        
-        # Обновляем таблицу
-        update_table()
+    page.title = "Weekly Calendar Planner"
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    page.padding = 20
+    page.theme_mode = "light"  # Используем строку вместо ft.ThemeMode.LIGHT
 
-    def update_table():
-        df = display_plans()
-        table.data = df.to_dict(orient='records')
-        page.update()
+    # Цвета интерфейса в виде строк
+    WHITE = "white"
+    BLUE_100 = "#bbdefb"
+    GREY_300 = "#e0e0e0"
 
-    # Кнопка для добавления плана
-    add_button = ft.ElevatedButton("Добавить план", on_click=on_add_plan)
+    # Текущая выбранная дата
+    selected_date = datetime.datetime.now().date()
+
+    # Элементы для добавления плана
+    category_input = ft.TextField(label="Category", width=300, height=40)
+    plan_input = ft.TextField(label="Plan", width=300, height=40, multiline=True, min_lines=2)
+
+    # Поля для времени
+    start_time_input = ft.TextField(label="Start Time (HH:MM)", width=140)
+    end_time_input = ft.TextField(label="End Time (HH:MM)", width=140)
+    time_row = ft.Row([start_time_input, end_time_input])
+
+    # Выбор цвета с эмодзи-метками
+    color_dropdown = ft.Dropdown(
+        label="Color",
+        width=300,
+        options=[ft.dropdown.Option(color) for color in PLAN_COLORS.keys()],
+        value="🔵 Blue"
+    )
+
+    add_button = ft.ElevatedButton("Add Plan")
 
     # Таблица для отображения планов
     table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("Date")),
-            ft.DataColumn(ft.Text("Category")),
-            ft.DataColumn(ft.Text("Plan")),
+            ft.DataColumn(ft.Text("Time")),
+            ft.DataColumn(ft.Text("Activity")),
         ],
         rows=[],
         width=500,
-        height=300,
     )
 
-    # Кнопка для сохранения в Excel
-    save_button = ft.ElevatedButton("Сохранить в Excel", on_click=lambda e: save_to_excel())
+    # Текст с выбранной датой
+    selected_date_text = ft.Text(f"Selected date: {selected_date.strftime('%A, %B %d')}",
+                                 size=18, weight="bold")  # Используем строку вместо ft.FontWeight.BOLD
 
-    # Добавляем элементы на страницу
-    page.add(date_picker, category_input, plan_input, add_button, table, save_button)
+    # Функция для создания карточки дня
+    def create_day_card(day_name, day_number, current_date):
+        is_selected = (current_date == selected_date)
+        return ft.Container(
+            width=100,
+            height=120,
+            border=ft.border.all(1, GREY_300),
+            border_radius=5,
+            bgcolor=WHITE if not is_selected else BLUE_100,
+            padding=5,
+            alignment=ft.alignment.center,
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Text(day_name, weight="bold"),  # Используем строку
+                    ft.Text(day_number, size=20),
+                ]
+            ),
+            data=current_date  # Сохраняем дату в карточке
+        )
+
+    # Функция выбора даты
+    def select_date(e):
+        nonlocal selected_date
+        selected_date = e.control.data
+        update_ui()
+
+    # Функция добавления плана
+    def on_add_plan(e):
+        category = category_input.value
+        plan = plan_input.value
+        start_time = start_time_input.value
+        end_time = end_time_input.value
+        color = color_dropdown.value
+
+        if category and plan and start_time and end_time:
+            try:
+                # Проверяем формат времени
+                start = datetime.datetime.strptime(start_time, "%H:%M").time()
+                end = datetime.datetime.strptime(end_time, "%H:%M").time()
+
+                if start >= end:
+                    raise ValueError("End time must be after start time")
+
+                add_plan(selected_date, category, plan, start_time, end_time, color)
+                category_input.value = ""
+                plan_input.value = ""
+                start_time_input.value = ""
+                end_time_input.value = ""
+                update_ui()
+            except ValueError as ve:
+                page.snack_bar = ft.SnackBar(ft.Text(str(ve)))
+                page.snack_bar.open = True
+                page.update()
+
+    # Функция обновления интерфейса
+    def update_ui():
+        # Обновляем выделение дат
+        for day_card in week_days.controls:
+            day_card.bgcolor = WHITE
+            if day_card.data == selected_date:
+                day_card.bgcolor = BLUE_100
+
+        # Обновляем текст выбранной даты
+        selected_date_text.value = f"Selected date: {selected_date.strftime('%A, %B %d')}"
+
+        # Обновляем таблицу с планами
+        table.rows.clear()
+        if selected_date in plans:
+            for entry in plans[selected_date]:
+                table.rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(
+                                ft.Text(f"{entry['start_time']} - {entry['end_time']}")
+                            ),
+                            ft.DataCell(
+                                ft.Row([
+                                    ft.Text(entry['color'].split()[0], size=20),  # Эмодзи
+                                    ft.Container(
+                                        content=ft.Text(entry['plan']),
+                                        padding=10,
+                                        border_radius=5,
+                                        bgcolor=entry['color_code'],  # Используем сохраненный код цвета
+                                        width=350,
+                                        expand=True
+                                    )
+                                ], spacing=5)
+                            ),
+                        ]
+                    )
+                )
+        page.update()
+
+    # Создаем карточки дней недели
+    today = datetime.datetime.now().date()
+    week_days = ft.Row(alignment="spaceEvenly")  # Используем строку вместо ft.MainAxisAlignment.SPACE_EVENLY
+
+    for i in range(5):  # Только рабочие дни (пн-пт)
+        current_date = today + datetime.timedelta(days=i)
+        day_name = ["MON", "TUE", "WED", "THU", "FRI"][i]
+        day_number = str(current_date.day)
+
+        day_card = create_day_card(day_name, day_number, current_date)
+        day_card.on_click = select_date
+
+        if current_date == selected_date:
+            day_card.bgcolor = BLUE_100
+
+        week_days.controls.append(day_card)
+
+    # Кнопка сохранения с эмодзи
+    save_button = ft.ElevatedButton(
+        "💾 Save to Excel",
+        on_click=lambda e: save_to_excel()
+    )
+
+    # Назначаем обработчик для кнопки добавления
+    add_button.on_click = on_add_plan
+
+    # Основной layout
+    page.add(
+        ft.Text("Weekly Planner", size=24, weight="bold"),
+        week_days,
+        ft.Divider(height=20),
+        selected_date_text,
+        ft.Divider(height=20),
+        ft.Row(
+            controls=[
+                ft.Column(
+                    width=300,
+                    controls=[
+                        category_input,
+                        plan_input,
+                        time_row,
+                        color_dropdown,
+                        add_button,
+                        save_button,
+                    ],
+                    spacing=10
+                ),
+                ft.VerticalDivider(width=20),
+                ft.Column(
+                    width=500,
+                    controls=[
+                        ft.Text("Plans for selected day:", size=16),
+                        ft.Container(
+                            table,
+                            border=ft.border.all(1, GREY_300),
+                            padding=10,
+                            border_radius=5
+                        )
+                    ]
+                )
+            ]
+        )
+    )
+
 
 # Запуск приложения
 ft.app(target=main)
