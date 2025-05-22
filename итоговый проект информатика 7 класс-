@@ -1,116 +1,148 @@
 import flet as ft
 import pandas as pd
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from transformers import pipeline
+import json
 
-# Основные праздники РФ (дата, название)
-RUSSIAN_HOLIDAYS = {
-    (1, 1): "Новый год",
-    (1, 2): "Новый год",
-    (1, 3): "Новый год",
-    (1, 4): "Новый год",
-    (1, 5): "Новый год",
-    (1, 6): "Новый год",
-    (1, 7): "Рождество Христово",
-    (1, 8): "Новый год (выходной)",
-    (2, 23): "День защитника Отечества",
-    (3, 8): "Международный женский день",
-    (5, 1): "Праздник весны и труда",
-    (5, 9): "День Победы",
-    (6, 12): "День России",
-    (11, 4): "День народного единства"
+# Инициализация нейросети для генерации поздравлений
+greeting_model = pipeline("text-generation", model="gpt2")
+
+# Список основных праздников в России
+holidays = {
+    "2023-01-01": "Новый год",
+    "2023-01-07": "Рождество Христово",
+    "2023-02-23": "День защитника Отечества",
+    "2023-03-08": "Международный женский день",
+    "2023-05-01": "Праздник весны и труда",
+    "2023-05-09": "День Победы",
+    # Добавьте другие праздники по мере необходимости
 }
 
-class CalendarApp:
-    def __init__(self, page: ft.Page):
-        self.page = page
-        self.page.title = "Календарь с планировщиком"
-        self.page.theme_mode = ft.ThemeMode.LIGHT
-        self.page.window_width = 1000
-        self.page.window_height = 700
-        self.page.window_resizable = False
-        self.page.padding = 20
-        
-        # Текущая выбранная дата
-        self.selected_date: Optional[date] = None
-        
-        # Хранилище планов (дата -> список планов)
-        self.plans: Dict[date, List[str]] = {}
-        
-        # Инициализация UI
-        self.init_ui()
-        
-    def init_ui(self):
-        """Инициализация пользовательского интерфейса"""
-        # Основной контейнер
-        self.main_container = ft.Column(expand=True, spacing=20)
-        
-        # Заголовок
-        self.title = ft.Text("Календарь с планировщиком", size=24, weight=ft.FontWeight.BOLD)
-        
-        # Строка с навигацией и счетчиком дней
-        self.nav_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-        
-        # Кнопки навигации
-        self.prev_month_btn = ft.IconButton(icon=ft.icons.ARROW_BACK, on_click=self.prev_month)
-        self.next_month_btn = ft.IconButton(icon=ft.icons.ARROW_FORWARD, on_click=self.next_month)
-        self.current_month_label = ft.Text(size=18, weight=ft.FontWeight.BOLD)
-        
-        # Счетчик дней до выбранной даты
-        self.days_counter = ft.Text("Выберите дату для отсчета", size=16, color=ft.colors.BLUE)
-        
-        # Добавление элементов в строку навигации
-        self.nav_row.controls.extend([
-            self.prev_month_btn,
-            self.current_month_label,
-            self.next_month_btn,
-            self.days_counter
-        ])
-        
-        # Календарная сетка
-        self.calendar_grid = ft.GridView(
-            runs_count=7,
-            max_extent=100,
-            spacing=5,
-            run_spacing=5,
-            child_aspect_ratio=1,
-        )
-        
-        # Панель добавления планов
-        self.add_plan_panel = ft.Column(
-            visible=False,
-            spacing=10
-        )
-        
-        self.plan_input = ft.TextField(
-            label="Добавить план",
-            multiline=True,
-            min_lines=2,
-            max_lines=4,
-            expand=True
-        )
-        
-        self.add_plan_btn = ft.ElevatedButton(
-            text="Добавить",
-            icon=ft.icons.ADD,
-            on_click=self.add_plan
-        )
-        
-        self.add_plan_panel.controls.extend([
-            ft.Text("Добавление плана", size=18, weight=ft.FontWeight.BOLD),
-            self.plan_input,
-            ft.Row([self.add_plan_btn], alignment=ft.MainAxisAlignment.END)
-        ])
-        
-        # Таблица с планами
-        self.plans_table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text("Дата")),
-                ft.DataColumn(ft.Text("План")),
-                ft.DataColumn(ft.Text("Действия")),
-            ],
-            rows=[],
-        )
-        
-        self.plans_table_container = ft.Column(
-            [
+# Инициализация DataFrame для хранения планов
+plans_df = pd.DataFrame(columns=["Дата", "План", "Категория"])
+
+def add_plan(date, plan, category):
+    """Добавляет новый план в DataFrame."""
+    global plans_df
+    new_entry = pd.DataFrame([[date, plan, category]], columns=["Дата", "План", "Категория"])
+    plans_df = pd.concat([plans_df, new_entry], ignore_index=True)
+
+def edit_plan(index, date, plan, category):
+    """Редактирует существующий план в DataFrame."""
+    global plans_df
+    plans_df.at[index, 'Дата'] = date
+    plans_df.at[index, 'План'] = plan
+    plans_df.at[index, 'Категория'] = category
+
+def delete_plan(index):
+    """Удаляет план из DataFrame."""
+    global plans_df
+    plans_df = plans_df.drop(index).reset_index(drop=True)
+
+def count_days_until(target_date):
+    """Считывает количество дней до заданной даты."""
+    today = datetime.now().date()
+    delta = (target_date - today).days
+    return delta if delta >= 0 else 0
+
+def get_holiday(date):
+    """Возвращает название праздника, если дата является праздником."""
+    return holidays.get(date.strftime('%Y-%m-%d'), None)
+
+def generate_greeting(holiday_name):
+    """Генерирует поздравление на основе названия праздника."""
+    prompt = f"С днём {holiday_name}! Желаю вам всего наилучшего!"
+    greeting = greeting_model(prompt, max_length=50, num_return_sequences=1)[0]['generated_text']
+    return greeting
+
+def save_plans_to_file(filename):
+    """Сохраняет планы в файл JSON."""
+    plans_df.to_json(filename, orient='records', lines=True)
+
+def load_plans_from_file(filename):
+    """Загружает планы из файла JSON."""
+    global plans_df
+    plans_df = pd.read_json(filename, orient='records', lines=True)
+
+def main(page):
+    """Основная функция приложения."""
+    page.title = "Календарь"
+    
+    # Элементы интерфейса
+    date_picker = ft.DatePicker(label="Выберите дату")
+    plan_input = ft.TextField(label="Ваш план", multiline=True)
+    
+    category_input = ft.Dropdown(
+        label="Категория",
+        options=[
+            ft.dropdown.Option("Работа"),
+            ft.dropdown.Option("Личные дела"),
+            ft.dropdown.Option("Учеба"),
+            ft.dropdown.Option("Отдых"),
+        ],
+    )
+    
+    add_button = ft.ElevatedButton("Добавить план", on_click=lambda e: add_plan(date_picker.value, plan_input.value, category_input.value))
+    
+    edit_button = ft.ElevatedButton("Редактировать план", on_click=lambda e: edit_selected_plan())
+    
+    delete_button = ft.ElevatedButton("Удалить план", on_click=lambda e: delete_selected_plan())
+    
+    save_button = ft.ElevatedButton("Сохранить планы", on_click=lambda e: save_plans_to_file("plans.json"))
+    
+    load_button = ft.ElevatedButton("Загрузить планы", on_click=lambda e: load_plans_from_file("plans.json"))
+    
+    plans_table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text("Дата")),
+            ft.DataColumn(ft.Text("План")),
+            ft.DataColumn(ft.Text("Категория")),
+        ],
+        rows=[]
+    )
+
+    def update_plans_table():
+        """Обновляет таблицу с планами."""
+        rows = []
+        for index, row in plans_df.iterrows():
+            color = "green" if row["Категория"] == "Работа" else "blue" if row["Категория"] == "Личные дела" else "orange" if row["Категория"] == "Учеба" else "red"
+            holiday_name = get_holiday(row["Дата"])
+            if holiday_name:
+                color = "gold"  # Золотой цвет для праздников
+                greeting = generate_greeting(holiday_name)
+                rows.append(ft.DataRow(cells=[
+                    ft.DataCell(ft.Text(row["Дата"].strftime('%Y-%m-%d'))),
+                    ft.DataCell(ft.Text(f"{row['План']} - {greeting}")),
+                    ft.DataCell(ft.Text(row["Категория"])),
+                ], bgcolor=color))
+            else:
+                rows.append(ft.DataRow(cells=[
+                    ft.DataCell(ft.Text(row["Дата"].strftime('%Y-%m-%d'))),
+                    ft.DataCell(ft.Text(row["План"])),
+                    ft.DataCell(ft.Text(row["Категория"])),
+                ], bgcolor=color))
+        plans_table.rows = rows
+        page.update()
+
+    def edit_selected_plan():
+        """Редактирует выбранный план."""
+        selected_index = plans_table.selected_row_index
+        if selected_index is not None:
+            edit_plan(selected_index, date_picker.value, plan_input.value, category_input.value)
+            update_plans_table()
+
+    def delete_selected_plan():
+        """Удаляет выбранный план."""
+        selected_index = plans_table.selected_row_index
+        if selected_index is not None:
+            delete_plan(selected_index)
+            update_plans_table()
+
+    # Обновляем таблицу при запуске приложения
+    update_plans_table()
+
+    # Добавляем элементы на страницу
+    page.add(date_picker, plan_input, category_input, add_button, edit_button, delete_button, save_button, load_button, plans_table)
+
+# Запуск приложения
+ft.app(target=main)
