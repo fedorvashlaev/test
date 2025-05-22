@@ -1,0 +1,76 @@
+import flet as ft
+import pandas as pd
+from datetime import datetime, timedelta
+
+# Основные праздники России
+holidays = {
+    "01-01": "Новый год",
+    "07-01": "Рождество Христово",
+    "23-02": "День защитника Отечества",
+    "08-03": "Международный женский день",
+    "01-05": "Праздник весны и труда",
+    "09-05": "День Победы",
+    "12-06": "День России",
+    "04-11": "День народного единства"
+}
+
+# Функция для проверки, является ли дата праздником
+def is_holiday(date):
+    return date.strftime("%d-%m") in holidays
+
+# Создание DataFrame для хранения планов
+plans_df = pd.DataFrame(columns=["Дата", "План"])
+
+# Функция для добавления плана
+def add_plan(date_str, plan):
+    global plans_df
+    new_row = {"Дата": date_str, "План": plan}
+    plans_df = plans_df.append(new_row, ignore_index=True)
+
+# Функция для отображения планов в таблице
+def display_plans():
+    return plans_df
+
+# Функция для подсчета дней до заданной даты
+def days_until(target_date):
+    today = datetime.now()
+    target_date = datetime.strptime(target_date, "%Y-%m-%d")
+    delta = (target_date - today).days
+    return delta
+
+# Основная функция приложения
+def main(page: ft.Page):
+    page.title = "Календарь"
+    
+    # Поля для ввода данных
+    date_input = ft.DatePicker(label="Выберите дату", value=datetime.now())
+    plan_input = ft.TextField(label="Введите ваши планы", multiline=True)
+    target_date_input = ft.TextField(label="Введите целевую дату (YYYY-MM-DD)")
+    
+    # Кнопка для добавления плана
+    add_button = ft.ElevatedButton("Добавить план", on_click=lambda e: add_plan(date_input.value.strftime("%Y-%m-%d"), plan_input.value))
+    
+    # Кнопка для отображения планов
+    display_button = ft.ElevatedButton("Показать планы", on_click=lambda e: page.add(ft.DataTable(
+        columns=[ft.DataColumn(ft.Text("Дата")), ft.DataColumn(ft.Text("План"))],
+        rows=[ft.DataRow(cells=[ft.DataCell(ft.Text(row["Дата"])), ft.DataCell(ft.Text(row["План"]))]) for _, row in plans_df.iterrows()])
+    )))
+    
+    # Кнопка для подсчета дней до целевой даты
+    countdown_button = ft.ElevatedButton("Сколько дней до?", on_click=lambda e: page.add(ft.Text(f"Дней до {target_date_input.value}: {days_until(target_date_input.value)}")))
+    
+    # Размещение элементов на странице
+    page.add(
+        date_input,
+        plan_input,
+        add_button,
+        display_button,
+        target_date_input,
+        countdown_button,
+        ft.Text("Основные праздники:"),
+        ft.Column([ft.Text(f"{date} - {name}") for date, name in holidays.items()])
+    )
+
+# Запуск приложения
+ft.app(target=main)
+  
