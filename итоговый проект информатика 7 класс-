@@ -1,26 +1,28 @@
 import pandas as pd
 import flet as ft
 import datetime
-import os
 import platform
 import sys
-from gpiozero import Button
 import subprocess
+from typing import Dict, List
 
 # Проверка платформы для GPIO
 IS_RASPBERRY_PI = platform.machine() in ('armv7l', 'aarch64')
 
 # Инициализация GPIO только на Raspberry Pi
+btn_prev = None
+btn_next = None
 if IS_RASPBERRY_PI:
     try:
+        from gpiozero import Button
         btn_prev = Button(17)
         btn_next = Button(18)
     except Exception as e:
         print(f"GPIO initialization error: {e}")
-        sys.exit(1)
+        IS_RASPBERRY_PI = False
 
 # Глобальные переменные
-plans = {}
+plans: Dict[datetime.date, List[Dict]] = {}
 current_lang = "en"
 
 PLAN_COLORS = {
@@ -84,17 +86,18 @@ WHITE = "#ffffff"
 BLUE_100 = "#bbdefb"
 GREY_300 = "#e0e0e0"
 
-def get_text(key):
+def get_text(key: str) -> str:
     return LANGUAGES[current_lang].get(key, key)
 
-def validate_time(time_str):
+def validate_time(time_str: str) -> bool:
     try:
         datetime.datetime.strptime(time_str, "%H:%M")
         return True
     except ValueError:
         return False
 
-def add_plan(date, category, plan, start_time, end_time, color):
+def add_plan(date: datetime.date, category: str, plan: str, 
+            start_time: str, end_time: str, color: str) -> None:
     if date not in plans:
         plans[date] = []
 
@@ -121,7 +124,39 @@ def add_plan(date, category, plan, start_time, end_time, color):
     })
     plans[date].sort(key=lambda x: datetime.datetime.strptime(x['start_time'], "%H:%M").time())
 
-def main(page: ft.Page):
+def save_to_excel(page: ft.Page) -> None:
+    try:
+        data = []
+        for date, entries in plans.items():
+            for entry in entries:
+                data.append({
+                    'Date': date.strftime("%Y-%m-%d"),
+                    'Category': entry['category'],
+                    'Plan': entry['plan'],
+                    'Start Time': entry['start_time'],
+                    'End Time': entry['end_time'],
+                    'Color': entry['color']
+                })
+        
+        df = pd.DataFrame(data)
+        filename = "weekly_plans.xlsx"
+        df.to_excel(filename, index=False)
+        
+        page.snack_bar = ft.SnackBar(
+            ft.Text(get_text("saved")),
+            bgcolor="green"
+        )
+        page.snack_bar.open = True
+        page.update()
+    except Exception as e:
+        page.snack_bar = ft.SnackBar(
+            ft.Text(str(e)),
+            bgcolor="red"
+        )
+        page.snack_bar.open = True
+        page.update()
+
+def main(page: ft.Page) -> None:
     global current_lang
     selected_date = datetime.datetime.now().date()
 
@@ -148,8 +183,7 @@ def main(page: ft.Page):
     plans_header_text = ft.Text(get_text("plans_for_day"), size=16)
     language_btn = ft.IconButton(icon="language", tooltip=get_text("language"), on_click=change_language)
 
-    # Функции очистки
-    def clear_day_plans(e):
+    def clear_day_plans(e: ft.ControlEvent) -> None:
         nonlocal selected_date
         if selected_date in plans:
             del plans[selected_date]
@@ -157,18 +191,19 @@ def main(page: ft.Page):
         page.snack_bar.open = True
         update_ui()
 
-    def clear_all_plans(e):
+    def clear_all_plans(e: ft.ControlEvent) -> None:
         plans.clear()
         page.snack_bar = ft.SnackBar(ft.Text(get_text("cleared_all")), bgcolor="green")
         page.snack_bar.open = True
         update_ui()
 
-    # Функция смены языка
-    def change_language(e):
+    def change_language(e: ft.ControlEvent) -> None:
         global current_lang
         current_lang = "ru" if current_lang == "en" else "en"
-        
-        # Обновление текстовых элементов
+        update_texts()
+        update_ui()
+
+    def update_texts() -> None:
         page.title = get_text("title")
         category_input.label = get_text("category")
         plan_input.label = get_text("plan")
@@ -177,18 +212,12 @@ def main(page: ft.Page):
         color_dropdown.label = get_text("color")
         plans_header_text.value = get_text("plans_for_day")
         language_btn.tooltip = get_text("language")
-        
-        # Обновление кнопок
         add_plan_btn.text = get_text("add_plan")
         control_buttons.controls[0].text = get_text("save")
         control_buttons.controls[1].text = get_text("clear_day")
         control_buttons.controls[2].text = get_text("clear_all")
-        
-        update_ui()
-        page.update()
 
-    # Функция добавления плана
-    def on_add_plan(e):
+    def on_add_plan(e: ft.ControlEvent) -> None:
         nonlocal selected_date
         try:
             category = category_input.value.strip()
@@ -204,8 +233,7 @@ def main(page: ft.Page):
                 raise ValueError(get_text("invalid_time"))
 
             add_plan(selected_date, category, plan, start_time, end_time, color)
-            
-            # Сброс полей ввода
+
             category_input.value = ""
             plan_input.value = ""
             time_row.controls[0].value = ""
@@ -218,15 +246,7 @@ def main(page: ft.Page):
             page.snack_bar.open = True
             page.update()
 
-    # Инициализация интерфейса
-    page.title = get_text("title")
-    page.window_width = SCREEN_WIDTH
-    page.window_height = SCREEN_HEIGHT
-    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
-    page.padding = 20
-    page.theme_mode = ft.ThemeMode.LIGHT
-
-    def create_day_card(day_name, day_number, current_date):
+    def create_day_card(day_name: str, day_number: str, current_date: datetime.date) -> ft.Container:
         return ft.Container(
             width=100,
             height=80,
@@ -242,7 +262,7 @@ def main(page: ft.Page):
             on_click=lambda e: select_date(e, current_date)
         )
 
-    def select_date(e, date):
+    def select_date(e: ft.ControlEvent, date: datetime.date) -> None:
         nonlocal selected_date
         selected_date = date
         update_ui()
@@ -280,7 +300,7 @@ def main(page: ft.Page):
         on_click=on_add_plan
     )
 
-    def update_ui():
+    def update_ui() -> None:
         week_days.controls.clear()
         for i in range(5):
             current_date = selected_date + datetime.timedelta(days=i - selected_date.weekday())
@@ -308,7 +328,14 @@ def main(page: ft.Page):
                 ))
         page.update()
 
-    # Сборка интерфейса
+    # Инициализация интерфейса
+    page.title = get_text("title")
+    page.window_width = SCREEN_WIDTH
+    page.window_height = SCREEN_HEIGHT
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    page.padding = 20
+    page.theme_mode = ft.ThemeMode.LIGHT
+
     page.add(
         ft.Column([
             ft.Row([
@@ -341,6 +368,17 @@ def main(page: ft.Page):
         ])
     )
 
+    # GPIO обработчики
+    if IS_RASPBERRY_PI and btn_prev and btn_next:
+        def change_date(delta: int) -> None:
+            nonlocal selected_date
+            selected_date += datetime.timedelta(days=delta)
+            page.run_task(lambda: update_ui())
+        
+        btn_prev.when_pressed = lambda: change_date(-1)
+        btn_next.when_pressed = lambda: change_date(1)
+
+    # Отключение屏保 для Linux
     if platform.system() == "Linux":
         subprocess.run(["xset", "-dpms"])
         subprocess.run(["xset", "s", "off"])
