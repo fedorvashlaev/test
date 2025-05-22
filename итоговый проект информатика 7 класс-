@@ -16,6 +16,7 @@ btn_next = None
 if IS_RASPBERRY_PI:
     try:
         from gpiozero import Button
+
         btn_prev = Button(17)
         btn_next = Button(18)
     except Exception as e:
@@ -88,8 +89,10 @@ WHITE = "#ffffff"
 BLUE_100 = "#bbdefb"
 GREY_300 = "#e0e0e0"
 
+
 def get_text(key: str) -> str:
     return LANGUAGES[current_lang].get(key, key)
+
 
 def validate_time(time_str: str) -> bool:
     try:
@@ -98,17 +101,18 @@ def validate_time(time_str: str) -> bool:
     except ValueError:
         return False
 
+
 def load_from_excel():
     try:
         if os.path.exists(EXCEL_FILENAME):
             df = pd.read_excel(EXCEL_FILENAME)
             plans.clear()
-            
+
             for _, row in df.iterrows():
                 date = datetime.datetime.strptime(row['Date'], "%Y-%m-%d").date()
                 if date not in plans:
                     plans[date] = []
-                
+
                 plans[date].append({
                     'category': row['Category'],
                     'plan': row['Plan'],
@@ -117,10 +121,11 @@ def load_from_excel():
                     'color': row['Color'],
                     'color_code': PLAN_COLORS[row['Color']]
                 })
-                
+
                 plans[date].sort(key=lambda x: datetime.datetime.strptime(x['start_time'], "%H:%M").time())
     except Exception as e:
         print(f"Error loading data: {e}")
+
 
 def auto_save():
     try:
@@ -135,14 +140,15 @@ def auto_save():
                     'End Time': entry['end_time'],
                     'Color': entry['color']
                 })
-        
+
         df = pd.DataFrame(data)
         df.to_excel(EXCEL_FILENAME, index=False)
     except Exception as e:
         print(f"Error auto-saving: {e}")
 
-def add_plan(date: datetime.date, category: str, plan: str, 
-            start_time: str, end_time: str, color: str) -> None:
+
+def add_plan(date: datetime.date, category: str, plan: str,
+             start_time: str, end_time: str, color: str) -> None:
     if date not in plans:
         plans[date] = []
 
@@ -169,10 +175,11 @@ def add_plan(date: datetime.date, category: str, plan: str,
     })
     plans[date].sort(key=lambda x: datetime.datetime.strptime(x['start_time'], "%H:%M").time())
 
+
 def main(page: ft.Page) -> None:
     global current_lang
     selected_date = datetime.datetime.now().date()
-    
+
     # Загрузка данных при старте
     load_from_excel()
 
@@ -394,7 +401,7 @@ def main(page: ft.Page) -> None:
             nonlocal selected_date
             selected_date += datetime.timedelta(days=delta)
             page.run_task(lambda: update_ui())
-        
+
         btn_prev.when_pressed = lambda: change_date(-1)
         btn_next.when_pressed = lambda: change_date(1)
 
@@ -402,5 +409,6 @@ def main(page: ft.Page) -> None:
     if platform.system() == "Linux":
         subprocess.run(["xset", "-dpms"])
         subprocess.run(["xset", "s", "off"])
+
 
 ft.app(target=main, view=ft.WEB_BROWSER)
