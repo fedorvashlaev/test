@@ -160,6 +160,27 @@ def main(page: ft.Page) -> None:
     global current_lang
     selected_date = datetime.datetime.now().date()
 
+    # Функции должны быть объявлены перед использованием
+    def change_language(e: ft.ControlEvent) -> None:
+        global current_lang
+        current_lang = "ru" if current_lang == "en" else "en"
+        update_texts()
+        update_ui()
+
+    def update_texts() -> None:
+        page.title = get_text("title")
+        category_input.label = get_text("category")
+        plan_input.label = get_text("plan")
+        time_row.controls[0].label = get_text("start_time")
+        time_row.controls[1].label = get_text("end_time")
+        color_dropdown.label = get_text("color")
+        plans_header_text.value = get_text("plans_for_day")
+        language_btn.tooltip = get_text("language")
+        add_plan_btn.text = get_text("add_plan")
+        control_buttons.controls[0].text = get_text("save")
+        control_buttons.controls[1].text = get_text("clear_day")
+        control_buttons.controls[2].text = get_text("clear_all")
+
     # Элементы интерфейса
     category_input = ft.TextField(label=get_text("category"), width=300)
     plan_input = ft.TextField(label=get_text("plan"), multiline=True, min_lines=2)
@@ -196,26 +217,6 @@ def main(page: ft.Page) -> None:
         page.snack_bar = ft.SnackBar(ft.Text(get_text("cleared_all")), bgcolor="green")
         page.snack_bar.open = True
         update_ui()
-
-    def change_language(e: ft.ControlEvent) -> None:
-        global current_lang
-        current_lang = "ru" if current_lang == "en" else "en"
-        update_texts()
-        update_ui()
-
-    def update_texts() -> None:
-        page.title = get_text("title")
-        category_input.label = get_text("category")
-        plan_input.label = get_text("plan")
-        time_row.controls[0].label = get_text("start_time")
-        time_row.controls[1].label = get_text("end_time")
-        color_dropdown.label = get_text("color")
-        plans_header_text.value = get_text("plans_for_day")
-        language_btn.tooltip = get_text("language")
-        add_plan_btn.text = get_text("add_plan")
-        control_buttons.controls[0].text = get_text("save")
-        control_buttons.controls[1].text = get_text("clear_day")
-        control_buttons.controls[2].text = get_text("clear_all")
 
     def on_add_plan(e: ft.ControlEvent) -> None:
         nonlocal selected_date
